@@ -1,35 +1,13 @@
 import Foundation
 
 struct CommandBuilder {
-    private let path: String
-    private let scheme: String
-    private let enableLibraryEvolution: Bool
-    private let outputPath: String
+    let scheme: String
+    let libaries: [String]
+    let path: String
+    let outputPath: String
     let platforms: [Platform]
-
-    init(
-        scheme: String,
-        path: String?,
-        outputPath: String?,
-        enableLibraryEvolution: Bool = false,
-        platforms: [Platform] = []
-    ) {
-        self.scheme = scheme
-        self.enableLibraryEvolution = enableLibraryEvolution
-        self.platforms = platforms.isEmpty ? [.ios, .simulator] : platforms
-
-        if let value = path {
-            self.path = (value as NSString).expandingTildeInPath
-        } else {
-            self.path = FileManager.default.currentDirectoryPath
-        }
-
-        if let value = outputPath {
-            self.outputPath = (((value as NSString).expandingTildeInPath) as NSString).appendingPathComponent("Build")
-        } else {
-            self.outputPath = (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent("Build")
-        }
-    }
+    let libraryEvolution: Bool
+    let frameworks: [LinkedFramework]
 }
 
 extension CommandBuilder {
@@ -38,78 +16,71 @@ extension CommandBuilder {
     }
 
     private var buildDirCommand: String { "BUILD_DIR='\(outputPath)'" }
-    private var frameworksPath: String { "\(outputPath)/frameworks" }
-    private var xcframeworkPath: String { "\(outputPath)/xcframeworks" }
-    private var resourcesPath: String { "\(outputPath)/resources" }
+    private var xcframeworkPath: String { "\(outputPath)" }
 
     var cleanCommand: String {
         "\(baseCommand) clean \(platforms.map(\.destination).joined(separator: " "))"
     }
 
+    var clearOutput: String {
+        "rm -rf '\(outputPath)'"
+    }
+
+    var listSchemes: String { "\(baseCommand) -list -derivedDataPath '\(outputPath)/DerivedData'" }
+
     var buildCommands: [String] {
-        let commands = platforms.map { platform -> String in
-            """
+
+        return platforms.map { platform -> String in
+            let linking = frameworks.map { $0.linking(platform)}
+            return """
             \(baseCommand) \
+            archive -archivePath \(outputPath)/\(platform.name) \
+            -derivedDataPath '\(outputPath)/DerivedData' \
             \(buildDirCommand) \
             \(platform.destination) \
             -configuration Release \
-            -sdk \(platform.sdk) \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=\(enableLibraryEvolution ? "YES" : "NO") \
-            ARCHS=\"\(platform.archs)\" \
-            BITCODE_GENERATION_MODE=\(platform.supportsBitcode ? "bitcode" : "marker")
+            SKIP_INSTALL=NO \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=\(libraryEvolution ? "YES" : "NO") \
+            OTHER_SWIFT_FLAGS="\(linking.joined(separator: " "))" \
+            OTHER_LDFLAGS="\(linking.joined(separator: " "))"
             """
         }
+    }
 
+    var frameworkPackageUp: [String] {
+        var commands = [String]()
+
+        for lib in libaries {
+            for p in platforms {
+                let libpath = "\(outputPath)/\(p.name).xcarchive/Products/usr/local/lib/\(lib).framework"
+                commands.append("mkdir -p \(libpath)/Modules")
+                commands.append("mkdir -p \(libpath)/Modules/\(lib).swiftmodule")
+                commands.append("cp -R '\(outputPath)/Release-\(p.sdk)'/\(lib).swiftmodule/*\(p.name).swiftdoc \(libpath)/Modules/\(lib).swiftmodule/")
+                commands.append("cp -R '\(outputPath)/Release-\(p.sdk)'/\(lib).swiftmodule/*\(p.name).swiftinterface \(libpath)/Modules/\(lib).swiftmodule/")
+                commands.append("cp -R '\(outputPath)/Release-\(p.sdk)'/*\(lib).bundle \(libpath)")
+                commands.append("cp -R '\(outputPath)/Release-\(p.sdk)/\(lib).framework.dSYM' '\(xcframeworkPath)/'")
+            }
+        }
         return commands
     }
 
-    var createFoldersCommands: [String] {
-        let frameworkPaths = platforms.map {
-            "mkdir -p \(outputPath)/Frameworks/\($0.name)"
+    func xcframeworkCommand() -> [String] {
+        var commands = [String]()
+
+        for lib in libaries {
+            let allFrameworks = platforms
+                .map { p in
+                    return "'\(outputPath)/\(p.name).xcarchive/Products/usr/local/lib/\(lib).framework'"
+                }
+                .joined(separator: " -framework ")
+
+            commands.append("xcodebuild -create-xcframework -framework \(allFrameworks) \(libraryEvolution ? "" : "-allow-internal-distribution") -output '\(xcframeworkPath)/\(lib).xcframework'")
         }
-
-        return frameworkPaths + [
-            "mkdir -p \(xcframeworkPath)",
-            "mkdir -p \(resourcesPath)"
-        ]
-    }
-
-    func frameworkNamesCommand(for platform: Platform) -> String {
-        "find \(outputPath)/\(platform.buildFolder) -maxdepth 1 -name '*.o'"
-    }
-
-    func createFrameworkCommand(frameworkName name: String, platform: Platform) -> String {
-        let libraryPath = "\(outputPath)/\(platform.buildFolder)/lib\(name).a"
-        let objectPath = "\(outputPath)/\(platform.buildFolder)/\(name).o"
-        let frameworkPath = "\(frameworksPath)/\(platform.name)/\(name).framework"
-        let modulesPath = "\(frameworkPath)/Modules"
-
-        let createLibrary = "ar -rcs \(libraryPath) \(objectPath)"
-
-        let createModulesFolder = "mkdir -p \(modulesPath)"
-        let copyLibrary = "cp \(libraryPath) \(frameworkPath)/\(name)"
-        let copyModule = "cp -r \(outputPath)/\(platform.buildFolder)/\(name).swiftmodule \(modulesPath)"
-
-        return [createLibrary, createModulesFolder, copyLibrary, copyModule]
-            .joined(separator: "; ")
-    }
-
-    func xcframeworkCommand(for name: String) -> String {
-        let allFrameworks = platforms
-            .map { platform in
-                "\(frameworksPath)/\(platform.name)/\(name).framework"
-            }
-            .joined(separator: " -framework ")
-
-        return "xcodebuild -create-xcframework -framework \(allFrameworks) \(enableLibraryEvolution ? "" : "-allow-internal-distribution") -output \(xcframeworkPath)/\(name).xcframework"
-    }
-
-    func copyResourcesCommand(for frameworkName: String, platfrom: Platform) -> String {
-        "cp -r \(outputPath)/\(platfrom.buildFolder)/\(frameworkName).bundle \(resourcesPath)"
+        return commands
     }
 
     var cleanupCommand: String {
-        let commands = platforms.map { "rm -rf \(outputPath)/\($0.buildFolder)" } + ["rm -rf \(frameworksPath)"]
+        let commands = platforms.map { "rm -rf '\(outputPath)/\($0.buildFolder)'" } + [ "rm -rf '\(outputPath)'/*.xcarchive"]
         return commands.joined(separator: "; ")
     }
 

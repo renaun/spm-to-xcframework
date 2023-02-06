@@ -1,7 +1,7 @@
 # spm-to-xcframework
 
 ## What's it?
-This little tool creates xcframework from SPM packages.
+This little tool creates xcframework from library targets inside SPM packages. Only supports .library(type: .dynamic) targets at the moment.
 
 ## Install
 Just pull the package and build from the source with this command: `swift build -c release`. Then you will find it in `.build/release` folder. You can download a version from releases page too.
@@ -11,14 +11,39 @@ Just pull the package and build from the source with this command: `swift build 
 To create xcframework for a package run
 
 ```
-./spm-to-xcframework YourPackageName --path path_to_your_package --output path_to_output
+spm-to-xcframework ~/MySPMRoot
 ```
- This will compile and create xcframework from `YourPackage` and its dependencies. XCFrameworks can be found at `path_to_output/Build/xcframeworks` folder.
- 
- `--path`: represents the path to spm package. If you omit this current directory is taken.
- `--output`: represents the output path where xcframeworks will be created. If omitted current directory is taken.
- `--enable-library-evolution`: This option enables library evolution for xcframeworks. With this they can be used with future swift compilers.
- `--platforms ios simulator`: Specifies which platforms will be supported by xcframeworks. For now only iphone and iphone simulator supported.
+
+```
+USAGE: spm-to-xcframework [<path>] [--libraries <libraries>] [--frameworks <frameworks>] [--output <output>] [--list] [--platforms <platforms>] [--verbose] [--disable-library-evolution] [--clean]
+
+ARGUMENTS:
+  <path>                  The path to the Package.swift file (default: ./)
+
+OPTIONS:
+  -l, --libraries <libraries>
+                          (Optional) Specific libraries to package. Default is to build all of them with -scheme
+                          <PackageName>-Package 
+  -f, --frameworks <frameworks>
+                          Paths to folders with linked frameworks the package expects to find during building.
+                          (default: [])
+  -o, --output <output>   The output directory defaults to ./xcframework inside the path folder. 
+  --list                  Just list package name and possible library targets to build 
+  --platforms <platforms> Defaults to both .ios, and .simulator, other platforms not support yet. (default:
+                          [spm_to_xcframework.Platform(name: "ios", destination: "-destination
+                          generic/platform=iOS", sdk: "iphoneos", buildFolder: "Release-iphoneos"),
+                          spm_to_xcframework.Platform(name: "simulator", destination: "-destination
+                          \'generic/platform=iOS Simulator\'", sdk: "iphonesimulator", buildFolder:
+                          "Release-iphonesimulator")])
+  -v, --verbose
+  --disable-library-evolution
+                          Sets BUILD_LIBRARY_FOR_DISTRIBUTION to NO, typically you want this YES for any dynamic
+                          libraries to use in iOS applications. Defaults to YES. 
+  --clean
+  -h, --help              Show help information.
+```
 
 ## Limitations
 For now only the packages that has swift code supported. Binary packages and objective-c packages are not supported.
+
+
