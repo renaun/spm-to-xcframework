@@ -25,7 +25,8 @@ struct SpmToXcframework: ParsableCommand {
     @Flag(name:.shortAndLong) var verbose: Bool = false
     @Flag(help: "Sets BUILD_LIBRARY_FOR_DISTRIBUTION to NO, typically you want this YES for any dynamic libraries to use in iOS applications. Defaults to YES.")
     var disableLibraryEvolution: Bool = false
-    @Flag var objc: Bool = false
+    @Flag(help: "Include to generate xcframework with ObjC compability modulemap and -Swift.h files.")
+    var objc: Bool = false
     @Flag var clean: Bool = false
     @Flag var keepBuildProducts: Bool = false
 
