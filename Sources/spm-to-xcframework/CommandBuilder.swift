@@ -8,6 +8,7 @@ struct CommandBuilder {
     let platforms: [Platform]
     let libraryEvolution: Bool
     let frameworks: [LinkedFramework]
+    let objc: Bool
 }
 
 extension CommandBuilder {
@@ -19,17 +20,13 @@ extension CommandBuilder {
     private var xcframeworkPath: String { "\(outputPath)" }
 
     var cleanCommand: String {
-        "\(baseCommand) clean \(platforms.map(\.destination).joined(separator: " "))"
-    }
-
-    var clearOutput: String {
-        "rm -rf '\(outputPath)'"
+        "rm -rf '\(outputPath)'/*"
     }
 
     var listSchemes: String { "\(baseCommand) -list -derivedDataPath '\(outputPath)/DerivedData'" }
 
     var buildCommands: [String] {
-
+// archive -archivePath \(outputPath)/\(platform.name) \
         return platforms.map { platform -> String in
             let linking = frameworks.map { $0.linking(platform)}
             return """
@@ -40,6 +37,8 @@ extension CommandBuilder {
             \(platform.destination) \
             -configuration Release \
             SKIP_INSTALL=NO \
+            DEFINES_MODULE=YES \
+            GENERATED_MODULEMAP_DIR=\(outputPath)/SwiftModuleMap-\(platform.name) \
             BUILD_LIBRARY_FOR_DISTRIBUTION=\(libraryEvolution ? "YES" : "NO") \
             OTHER_SWIFT_FLAGS="\(linking.joined(separator: " "))" \
             OTHER_LDFLAGS="\(linking.joined(separator: " "))"
@@ -52,6 +51,7 @@ extension CommandBuilder {
 
         for lib in libaries {
             for p in platforms {
+                let modulepath = "\(outputPath)/SwiftModuleMap-\(p.name)"
                 let libpath = "\(outputPath)/\(p.name).xcarchive/Products/usr/local/lib/\(lib).framework"
                 commands.append("mkdir -p \(libpath)/Modules")
                 commands.append("mkdir -p \(libpath)/Modules/\(lib).swiftmodule")
@@ -59,6 +59,11 @@ extension CommandBuilder {
                 commands.append("cp -R '\(outputPath)/Release-\(p.sdk)'/\(lib).swiftmodule/*\(p.name).swiftinterface \(libpath)/Modules/\(lib).swiftmodule/")
                 commands.append("cp -R '\(outputPath)/Release-\(p.sdk)'/*\(lib).bundle \(libpath)")
                 commands.append("cp -R '\(outputPath)/Release-\(p.sdk)/\(lib).framework.dSYM' '\(xcframeworkPath)/'")
+                if objc {
+                    commands.append("mkdir -p \(libpath)/Headers")
+                    commands.append("cp '\(modulepath)'/\(lib)-Swift.h \(libpath)/Headers")
+                    commands.append("cp '\(modulepath)'/\(lib).modulemap \(libpath)/Modules")
+                }
             }
         }
         return commands
@@ -80,7 +85,7 @@ extension CommandBuilder {
     }
 
     var cleanupCommand: String {
-        let commands = platforms.map { "rm -rf '\(outputPath)/\($0.buildFolder)'" } + [ "rm -rf '\(outputPath)'/*.xcarchive"]
+        let commands = platforms.map { "rm -rf '\(outputPath)/\($0.buildFolder)'" } + [ "rm -rf '\(outputPath)'/*.xcarchive", "rm -rf '\(outputPath)/SwiftModuleMap*" ]
         return commands.joined(separator: "; ")
     }
 
