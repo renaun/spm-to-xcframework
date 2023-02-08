@@ -10,6 +10,9 @@ struct SpmToXcframework: ParsableCommand {
     @Option(name: .shortAndLong, help:"(Optional) Specific libraries to package. Default is to build all of them with -scheme <PackageName>-Package")
     var libraries: [String]?
 
+    @Option(name: .shortAndLong, help:"(Optional) Specific bundles to package. Default is to add all *.bundle from all targets and epdencies.")
+    var bundles: [String]?
+
     @Option(name: .shortAndLong, help:"Paths to folders with linked frameworks the package expects to find during building.")
     var frameworks = [String]()
 
@@ -79,7 +82,8 @@ struct SpmToXcframework: ParsableCommand {
             platforms: platforms,
             libraryEvolution: !disableLibraryEvolution,
             frameworks: linking,
-            objc: objc
+            objc: objc,
+            bundles: bundles ?? ["*"]
         )
         createxcframeworks(with: commandBuilder)
     }
@@ -98,14 +102,17 @@ struct SpmToXcframework: ParsableCommand {
         log("Listing Schemes")
         execute(commandBuilder.listSchemes, verbose)
 
-        log("Building Package")
-        commandBuilder.buildCommands.forEach {
-            execute($0, verbose)
-        }
+        log("Remove XCFrameworks and dSYMs")
+        execute(commandBuilder.cleanXCFrameworksCommand, verbose)
 
-        log("Moving package files")
-        commandBuilder.frameworkPackageUp.forEach {
-            execute($0, verbose)
+        for p in platforms {
+            log("Building Package for \(p.sdk)")
+            execute(commandBuilder.buildCommands(p), verbose)
+
+            log("Moving package files for \(p.sdk)")
+            commandBuilder.frameworkPackageUp(p).forEach {
+                execute($0, verbose)
+            }
         }
 
         log("Creating xcframeworks")
