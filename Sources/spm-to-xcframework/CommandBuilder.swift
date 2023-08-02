@@ -40,7 +40,7 @@ extension CommandBuilder {
         DEFINES_MODULE=YES \
         GENERATED_MODULEMAP_DIR=\(outputPath)/SwiftModuleMap-\(p.name) \
         BUILD_LIBRARY_FOR_DISTRIBUTION=\(libraryEvolution ? "YES" : "NO") \
-        OTHER_SWIFT_FLAGS="\(linking.joined(separator: " "))" \
+        OTHER_SWIFT_FLAGS="\(libraryEvolution ? "-no-verify-emitted-module-interface " : "")\(linking.joined(separator: " "))" \
         OTHER_LDFLAGS="\(linking.joined(separator: " "))"
         """
     }
